@@ -3,134 +3,122 @@ import pandas as pd
 from datetime import datetime, timedelta
 import io
 import os
+import re
 
-# 1. Configurações Visuais de Nível Profissional
-st.set_page_config(page_title="Gestor Financeiro Pro", page_icon="📈", layout="wide")
+# 1. Configurações de Segurança e Interface
+st.set_page_config(page_title="Sistema Seguro v4.0", page_icon="🛡️", layout="wide")
 
-# Estilo para os cartões de métricas
+# Bloqueio visual de erros internos (mostra apenas o necessário)
 st.markdown("""
     <style>
-    [data-testid="stMetricValue"] { font-size: 35px; color: #00FF00; }
-    [data-testid="stMetricLabel"] { font-size: 18px; }
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    .stDeployButton {display:none;}
     </style>
     """, unsafe_allow_html=True)
 
-# 2. Banco de Dados Local (Arquivo CSV)
-DB_FILE = "historico_ganhos.csv"
+# 2. Gerenciamento Seguro de Arquivos
+DB_FILE = "dados_protegidos.csv"
 
-def carregar_dados():
+def carregar_dados_seguro():
+    """Carrega dados tratando possíveis corrupções de arquivo."""
     if os.path.exists(DB_FILE):
         try:
             return pd.read_csv(DB_FILE).to_dict('records')
-        except:
+        except Exception:
             return []
     return []
 
-def salvar_dados(dados):
-    pd.DataFrame(dados).to_csv(DB_FILE, index=False)
+def salvar_dados_seguro(dados):
+    """Salva dados garantindo que apenas o necessário seja escrito."""
+    try:
+        df = pd.DataFrame(dados)
+        # Sanitização: remove caracteres que podem injetar código em planilhas
+        df = df.replace(r'[=+\-@]', '', regex=True)
+        df.to_csv(DB_FILE, index=False)
+    except Exception as e:
+        st.error("Erro interno ao salvar. Contate o administrador.")
 
-# Inicialização do estado do sistema
+# Inicialização
 if 'dados' not in st.session_state:
-    st.session_state.dados = carregar_dados()
+    st.session_state.dados = carregar_dados_seguro()
 
-# --- CABEÇALHO E DASHBOARD ---
-st.title("📊 Gestor de Produtividade e Ganhos")
+# --- INTERFACE ---
+st.title("🛡️ Gestão Financeira Protegida")
 
+# Dashboard de Métricas (Apenas Leitura)
 if st.session_state.dados:
     df_resumo = pd.DataFrame(st.session_state.dados)
-    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-    with col_m1:
-        st.metric("Faturamento Total", f"R$ {df_resumo['Total Final (R$)'].sum():.0f}")
-    with col_m2:
-        st.metric("Média por Saída", f"R$ {df_resumo['Total Final (R$)'].mean():.0f}")
-    with col_m3:
-        st.metric("Total KM Base", f"{df_resumo['KM Base Cálculo'].sum()} km")
-    with col_m4:
-        st.metric("Total Horas Líquidas", f"{df_resumo['Horas Líquidas'].sum():.1f}h")
+    cols = st.columns(4)
+    cols[0].metric("Faturamento", f"R$ {df_resumo['Total Final (R$)'].sum():.0f}")
+    cols[1].metric("Saídas", len(df_resumo))
+    cols[2].metric("KM Base", f"{df_resumo['KM Base Cálculo'].sum()} km")
+    cols[3].metric("Horas Líq.", f"{df_resumo['Horas Líquidas'].sum():.1f}h")
 
 st.divider()
 
-# --- ÁREA DE LANÇAMENTO ---
-with st.expander("➕ REGISTRAR NOVO ACIONAMENTO", expanded=not st.session_state.dados):
-    with st.form("form_pro", clear_on_submit=True):
-        col_a, col_b = st.columns(2)
+# --- FORMULÁRIO COM VALIDAÇÃO DE ENTRADA (ANTI-HACK) ---
+with st.expander("🔐 NOVO LANÇAMENTO SEGURO", expanded=not st.session_state.dados):
+    with st.form("form_secure", clear_on_submit=True):
+        c1, c2 = st.columns(2)
+        with c1:
+            data_ini = st.date_input("Data do Serviço")
+            h_ini = st.time_input("Início", value=None)
+            h_fim = st.time_input("Término", value=None)
+        with c2:
+            # Proteção contra números absurdos ou negativos
+            km_ini = st.number_input("KM Inicial", min_value=0, max_value=999999)
+            km_fim = st.number_input("KM Término", min_value=0, max_value=999999)
         
-        with col_a:
-            st.markdown("### 🕒 Horários")
-            data_ini = st.date_input("Data do Serviço", value=datetime.now())
-            h_ini = st.time_input("Hora de Início", value=None)
-            h_fim = st.time_input("Hora de Término", value=None)
-            
-        with col_b:
-            st.markdown("### 🛣️ Quilometragem")
-            km_ini = st.number_input("KM Inicial (Painel)", min_value=0, step=1)
-            km_fim = st.number_input("KM Término (Painel)", min_value=0, step=1)
-        
-        st.divider()
-        btn_salvar = st.form_submit_button("💾 SALVAR E CALCULAR REGISTRO")
+        btn_salvar = st.form_submit_button("VALIDAR E SALVAR")
 
 if btn_salvar:
+    # Validação Robusta de Entradas
     if not h_ini or not h_fim:
-        st.error("⚠️ Por favor, preencha todos os horários.")
-    elif km_fim < 0: # Caso queira validar se os KMs foram preenchidos
-        st.error("⚠️ Preencha os valores de KM.")
+        st.warning("Preencha todos os campos de horário.")
+    elif km_fim < 0 or km_ini < 0:
+        st.error("Valores de KM inválidos detectados.")
     else:
-        # Combinando Datas e Horas
+        # Lógica de Cálculo Protegida
         ini = datetime.combine(data_ini, h_ini)
-        # Lógica para caso o serviço termine no dia seguinte (meia-noite)
         data_fim_ajustada = data_ini if h_fim > h_ini else data_ini + timedelta(days=1)
         fim = datetime.combine(data_fim_ajustada, h_fim)
         
-        # --- CÁLCULO DE KM (REGRA: (INICIAL + FINAL) - 50) * 1.10 ---
+        # Regra KM: (Ini + Fim) - 50 * 1.10
         soma_km = km_ini + km_fim
         km_calculado = max(0, soma_km - 50)
-        valor_km_total = km_calculado * 1.10
         
-        # --- CÁLCULO DE TEMPO (REGRA: (TOTAL - 3H) * 30) ---
-        segundos_totais = (fim - ini).total_seconds()
-        horas_brutas = segundos_totais / 3600
+        # Regra Tempo: (Total - 3h) * 30
+        horas_brutas = (fim - ini).total_seconds() / 3600
         horas_liq = max(0.0, horas_brutas - 3.0)
-        valor_tempo_total = horas_liq * 30.0
         
-        # --- TOTAL FINAL (BASE 220 + TEMPO + KM) ---
-        total_final = 220.0 + valor_tempo_total + valor_km_total
+        # Total Final
+        total_f = 220.0 + (horas_liq * 30.0) + (km_calculado * 1.10)
         
-        # Criando o registro
-        novo_registro = {
-            'Data': data_ini.strftime('%d/%m/%Y'),
-            'Horas Brutas': round(horas_brutas, 2),
+        novo_reg = {
+            'Data': data_ini.strftime('%Y-%m-%d'),
             'Horas Líquidas': round(horas_liq, 2),
-            'Soma KM': soma_km,
-            'KM Base Cálculo': km_calculado,
-            'Valor KM (R$)': round(valor_km_total, 2),
-            'Total Final (R$)': int(total_final)
+            'KM Base Cálculo': int(km_calculado),
+            'Total Final (R$)': int(total_f),
+            'Timestamp': datetime.now().strftime('%H:%M:%S') # Auditoria
         }
         
-        st.session_state.dados.append(novo_registro)
-        salvar_dados(st.session_state.dados)
-        st.success(f"✅ Sucesso! Total de R$ {int(total_final)} adicionado ao dashboard.")
+        st.session_state.dados.append(novo_reg)
+        salvar_dados_seguro(st.session_state.dados)
+        st.success("Registro validado e armazenado com sucesso.")
         st.rerun()
 
-# --- TABELA DE HISTÓRICO ---
+# --- VISUALIZAÇÃO SEGURA ---
 if st.session_state.dados:
-    st.subheader("📑 Detalhamento dos Registros")
-    df_visual = pd.DataFrame(st.session_state.dados)
-    
-    # Exibe a tabela de forma limpa
-    st.dataframe(df_visual, use_container_width=True)
+    df_vis = pd.DataFrame(st.session_state.dados)
+    st.subheader("📑 Registros Auditados")
+    st.dataframe(df_vis, use_container_width=True, hide_index=True)
 
-    # Botão de Exportação para Excel Profissional
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df_visual.to_excel(writer, index=False)
-    
+    # Exportação Segura
+    csv = df_vis.to_csv(index=False).encode('utf-8')
     st.download_button(
-        label="📥 Baixar Relatório para Auditoria",
-        data=output.getvalue(),
-        file_name=f"Relatorio_Ganhos_{datetime.now().strftime('%m_%Y')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        label="📥 Baixar Backup de Segurança (CSV)",
+        data=csv,
+        file_name=f"backup_financeiro_{datetime.now().strftime('%Y%m%d')}.csv",
+        mime="text/csv",
     )
-
-# Rodapé profissional
-st.markdown("---")
-st.caption(f"Sistema Gerencial v3.0 | Atualizado em {datetime.now().strftime('%d/%m/%Y')}")
