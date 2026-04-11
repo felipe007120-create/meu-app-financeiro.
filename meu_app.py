@@ -4,10 +4,10 @@ from datetime import datetime, timedelta
 import io
 import os
 
-# Configuração da página
+# --- CONFIGURAÇÕES DE SEGURANÇA E PÁGINA ---
 st.set_page_config(page_title="Sistema Financeiro", page_icon="💰")
 
-# Banco de Dados para persistência
+# Banco de dados local para prevenir perda de dados
 DB_FILE = "dados_financeiros.csv"
 
 def carregar_dados():
@@ -19,21 +19,26 @@ def carregar_dados():
     return []
 
 def salvar_dados(dados):
-    pd.DataFrame(dados).to_csv(DB_FILE, index=False)
+    try:
+        pd.DataFrame(dados).to_csv(DB_FILE, index=False)
+    except:
+        st.error("Erro de segurança ao gravar arquivo.")
 
-# Inicialização do histórico
+# Inicialização do banco de dados na memória
 if 'dados' not in st.session_state:
     st.session_state.dados = carregar_dados()
 
 st.title("Registro de Ganhos")
 
-# Barra Lateral
+# --- BARRA LATERAL (ONDE VOCÊ MUDA OS VALORES) ---
 st.sidebar.header("Configurações")
+
+# Aqui você muda os valores padrão (30.0 e 220.0) se quiser que o app já abra diferente
 VALOR_HORA = st.sidebar.number_input("Valor por Hora (R$)", value=30.0)
 VALOR_ACIONAMENTO = st.sidebar.number_input("Valor Acionamento (R$)", value=220.0)
 VALOR_KM_UNITARIO = 1.10
 
-# Formulário (Design Clássico)
+# --- FORMULÁRIO DE ENTRADA (DESIGN CLÁSSICO) ---
 with st.form("registro_form", clear_on_submit=True):
     col1, col2 = st.columns(2)
     with col1:
@@ -53,32 +58,35 @@ with st.form("registro_form", clear_on_submit=True):
         
     submit = st.form_submit_button("Adicionar Registro")
 
+# --- LÓGICA DE CÁLCULO SEGURA ---
 if submit:
     if hora_inicio is None or hora_fim is None:
         st.error("Por favor, preencha o horário de início e término.")
     else:
-        # Lógica de Tempo (Dedução de 3h)
+        # Lógica de Tempo (Dedução de 3h conforme sua regra)
         inicio_dt = datetime.combine(data_inicio, hora_inicio)
+        # Ajuste inteligente para trabalho que vira a noite
         data_fim_ajustada = data_inicio if hora_fim > hora_inicio else data_inicio + timedelta(days=1)
         fim_dt = datetime.combine(data_fim_ajustada, hora_fim)
         
         if fim_dt <= inicio_dt:
             st.error("Erro: A data de término deve ser posterior à de início.")
         else:
-            # Regra KM: (Inicial + Final) - 50 * 1.10
+            # 1. REGRA KM: (Inicial + Término) - 50, multiplicado por 1.10
             soma_km = km_inicial + km_final
             km_calculado = max(0, soma_km - 50)
             custo_km = km_calculado * VALOR_KM_UNITARIO
             
-            # Regra Tempo: Total - 3h * Valor Hora
-            diferenca_bruta = (fim_dt - inicio_dt).total_seconds() / 3600
-            horas_liquidas = max(0.0, diferenca_bruta - 3.0)
+            # 2. REGRA TEMPO: Total de horas menos 3 horas
+            segundos_totais = (fim_dt - inicio_dt).total_seconds()
+            horas_brutas = segundos_totais / 3600
+            horas_liquidas = max(0.0, horas_brutas - 3.0)
             custo_tempo = horas_liquidas * VALOR_HORA
 
-            # Total Final
+            # 3. TOTAL FINAL (Acionamento + Tempo + KM)
             total_ganho = VALOR_ACIONAMENTO + custo_tempo + custo_km
 
-            # Registro dos dados
+            # Criar o registro para salvar
             novo_item = {
                 'Data': data_inicio.strftime('%d/%m/%Y'),
                 'Início': hora_inicio.strftime('%H:%M'),
@@ -89,18 +97,21 @@ if submit:
                 'Total Final (R$)': int(total_ganho)
             }
             
+            # Salvar no banco de dados e na memória
             st.session_state.dados.append(novo_item)
             salvar_dados(st.session_state.dados)
-            st.success(f"Registro adicionado! Total: R$ {int(total_ganho)}")
+            st.success(f"Registro adicionado com sucesso! Total: R$ {int(total_ganho)}")
 
-# Exibição da Tabela
+# --- EXIBIÇÃO DA TABELA ---
 if st.session_state.dados:
     df = pd.DataFrame(st.session_state.dados)
     st.divider()
     st.subheader("Resumo")
-    st.dataframe(df, use_container_width=True)
+    
+    # Tabela com largura total da tela
+    st.dataframe(df, use_container_width=True, hide_index=True)
 
-    # Exportação Excel
+    # Botão de Exportação para Excel
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, index=False)
@@ -108,6 +119,6 @@ if st.session_state.dados:
     st.download_button(
         label="Baixar Excel",
         data=output.getvalue(),
-        file_name="Relatorio_Financeiro.xlsx",
+        file_name=f"Relatorio_{datetime.now().strftime('%d_%m')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
