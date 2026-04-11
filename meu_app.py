@@ -2,186 +2,151 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import io
+import os
 import plotly.express as px
 
-# 1. Configurações Visuais de Nível Profissional (Inspirado no App)
-st.set_page_config(page_title="Meus Ganhos Pro", page_icon="💰", layout="wide")
+# 1. Configurações Visuais Estilo Mobills
+st.set_page_config(page_title="Gestor Financeiro Pro", page_icon="💰", layout="wide")
 
-# Estilização CSS para imitar o visual do app
+# CSS para interface Dark Mode e cartões arredondados
 st.markdown("""
     <style>
-    /* Cor de fundo e textos */
-    [data-testid="stSidebar"] {background-color: #f0f2f6;}
-    [data-testid="stAppViewContainer"] {background-color: #FFFFFF;}
-    
-    /* Configuração dos Cartões de Métrica */
-    [data-testid="stMetricValue"] { font-size: 32px; font-weight: bold; color: #1E90FF; }
-    [data-testid="stMetricLabel"] { font-size: 16px; color: #555555; }
-    
-    /* Customização do cabeçalho */
-    h1 { color: #333333; }
-    
-    /* Borda e fundo arredondado para o formulário */
+    [data-testid="stMetricValue"] { font-size: 30px; font-weight: bold; color: #1E90FF; }
+    [data-testid="stMetricLabel"] { font-size: 14px; color: #888888; }
     .stForm {
-        border-radius: 20px;
-        padding: 20px;
-        background-color: #f8f9fa;
-        border: 1px solid #e9ecef;
+        border-radius: 15px;
+        padding: 25px;
+        background-color: #ffffff;
+        border: 1px solid #e0e0e0;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. Inicialização do histórico
+# 2. Banco de Dados Local (Arquivo CSV)
+DB_FILE = "dados_financeiros.csv"
+
+def carregar_dados():
+    if os.path.exists(DB_FILE):
+        try:
+            return pd.read_csv(DB_FILE).to_dict('records')
+        except:
+            return []
+    return []
+
+def salvar_dados(dados):
+    try:
+        pd.DataFrame(dados).to_csv(DB_FILE, index=False)
+    except:
+        st.error("Erro de segurança ao gravar arquivo.")
+
+# Inicialização do sistema
 if 'dados' not in st.session_state:
-    st.session_state.dados = []
+    st.session_state.dados = carregar_dados()
 
-# --- TÍTULO DO PAINEL (DASHBOARD) ---
-st.title("💰 Gestor de Ganhos")
+# --- CABEÇALHO ---
+st.title("💰 Registro de Ganhos")
 
-# Se houver dados, mostramos os gráficos (Vimos que isso estava travando antes)
+# --- DASHBOARD DE MÉTRICAS ---
 if st.session_state.dados:
-    df_dashboard = pd.DataFrame(st.session_state.dados)
+    df_dash = pd.DataFrame(st.session_state.dados)
     
-    # --- ÁREA DAS MÉTRICAS (Igual aos cartões do app) ---
-    col_metric1, col_metric2, col_metric3 = st.columns(3)
-    
-    with col_metric1:
-        total_ganho_acumulado = df_dashboard['Total Final (R$)'].sum()
-        st.metric("Total Acumulado", f"R$ {total_ganho_acumulado:.0f}")
-        
-    with col_metric2:
-        media_ganho = df_dashboard['Total Final (R$)'].mean()
-        st.metric("Média por Acionamento", f"R$ {media_ganho:.0f}")
-        
-    with col_metric3:
-        # Mostra o ganho mais alto
-        melhor_ganho = df_dashboard['Total Final (R$)'].max()
-        st.metric("Melhor Ganho", f"R$ {melhor_ganho:.0f}")
+    c_m1, c_m2, c_m3, c_m4 = st.columns(4)
+    with c_m1:
+        st.metric("Total Acumulado", f"R$ {df_dash['Total Final (R$)'].sum():.0f}")
+    with c_m2:
+        st.metric("Média/Serviço", f"R$ {df_dash['Total Final (R$)'].mean():.0f}")
+    with c_m3:
+        st.metric("KM Base Total", f"{df_dash['KM Base'].sum()} km")
+    with c_m4:
+        st.metric("Horas Líquidas", f"{df_dash['Horas Líquidas'].sum():.1f}h")
 
     st.divider()
 
-    # --- ÁREA DOS GRÁFICOS (Inspirado na imagem) ---
-    st.subheader("📊 Análise de Desempenho")
-    col_graph1, col_graph2 = st.columns([1, 1.5]) # Gráfico menor e maior
-
-    with col_graph1:
-        # Gráfico 1: Anel de Horas vs KM (Inspirado no anel colorido)
-        df_pizza = df_dashboard.groupby('Data')[['Horas Líquidas', 'KM Base']].sum().reset_index()
-        # Preparamos os dados para uma pizza
-        df_pizza_long = df_pizza.melt(id_vars='Data', value_vars=['Horas Líquidas', 'KM Base'], 
-                                    var_name='Tipo', value_name='Valor')
-        
-        # Cores iguais às do app (Verde, Vermelho, Amarelo)
-        fig_donut = px.pie(df_pizza_long, values='Valor', names='Tipo', hole=.5,
-                          title="Fator de Ganhos",
-                          color_discrete_sequence=['#28a745', '#dc3545', '#ffc107'])
-        
-        # Ajustes de visual
-        fig_donut.update_traces(textposition='inside', textinfo='percent+label')
-        fig_donut.update_layout(showlegend=False, margin=dict(t=30, b=0, l=0, r=0))
-        st.plotly_chart(fig_donut, use_container_width=True)
-
-    with col_graph2:
-        # Gráfico 2: Evolução dos Ganhos no Tempo (Inspirado nas barras/linhas)
-        fig_evolucao = px.bar(df_dashboard, x='Data', y='Total Final (R$)',
-                             title="Evolução do Faturamento (Por Serviço)",
-                             color='Total Final (R$)',
-                             color_continuous_scale=px.colors.sequential.Teal)
-        
-        fig_evolucao.update_layout(margin=dict(t=30, b=0, l=0, r=0))
-        st.plotly_chart(fig_evolucao, use_container_width=True)
-
-    st.divider()
-
-# --- ÁREA DE LANÇAMENTO (Ficou limpo e arredondado) ---
-st.subheader("📝 Adicionar Novo Serviço")
-with st.form("registro_form_moderno", clear_on_submit=True):
-    col_input1, col_input2 = st.columns(2)
+    # --- GRÁFICOS ---
+    col_g1, col_g2 = st.columns([1, 2])
     
-    with col_input1:
-        st.markdown("### 📅 Período")
-        data_inicio = st.date_input("Data de Início")
-        hora_inicio = st.time_input("Hora de Início", value=datetime.strptime("08:00", "%H:%M").time())
-    with col_input2:
-        st.markdown("### 🕒 Horários")
+    with col_g1:
+        # Gráfico de Anel (Fator de Ganhos)
+        dados_rosca = {
+            'Categoria': ['Horas Líquidas', 'KM Base'],
+            'Valores': [df_dash['Horas Líquidas'].sum(), df_dash['KM Base'].sum()]
+        }
+        fig_rosca = px.pie(dados_rosca, values='Valores', names='Categoria', hole=.5,
+                          color_discrete_sequence=['#2ecc71', '#3498db'])
+        fig_rosca.update_layout(showlegend=False, height=250, margin=dict(t=0, b=0, l=0, r=0))
+        st.plotly_chart(fig_rosca, use_container_width=True)
+
+    with col_g2:
+        # Gráfico de Evolução
+        fig_evol = px.area(df_dash, x='Data', y='Total Final (R$)', title="Evolução do Faturamento")
+        fig_evol.update_layout(height=250, margin=dict(t=30, b=0, l=0, r=0))
+        st.plotly_chart(fig_evol, use_container_width=True)
+
+# --- CONFIGURAÇÕES NA BARRA LATERAL ---
+st.sidebar.header("⚙️ Configurações")
+VALOR_HORA = st.sidebar.number_input("Valor por Hora (R$)", value=30.0)
+VALOR_ACIONAMENTO = st.sidebar.number_input("Valor Acionamento (R$)", value=220.0)
+VALOR_KM_FIXO = 1.10
+
+# --- FORMULÁRIO DE LANÇAMENTO ---
+with st.form("registro_form", clear_on_submit=True):
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        data_ini = st.date_input("Data de Início")
+        h_ini = st.time_input("Hora de Início", value=None)
+        km_ini = st.number_input("KM Inicial", min_value=0)
+    with col_f2:
         data_fim = st.date_input("Data de Término")
-        hora_fim = st.time_input("Hora de Término", value=datetime.strptime("17:00", "%H:%M").time())
+        h_fim = st.time_input("Hora de Término", value=None)
+        km_fim = st.number_input("KM Término", min_value=0)
     
     st.divider()
-    
-    col_km1, col_km2 = st.columns(2)
-    with col_km1:
-        st.markdown("### 🚗 Quilometragem")
-        km_inicial = st.number_input("KM Inicial (Painel)", min_value=0, step=1)
-    with col_km2:
-        st.markdown("### ") # Espaço para alinhar
-        km_final = st.number_input("KM Término (Painel)", min_value=0, step=1)
-        
-    # Botão Verde e Centralizado como no app
-    submit_central = st.columns([1, 1, 1])
-    with submit_central[1]: # Coluna do meio
-        submit = st.form_submit_button("✅ SALVAR REGISTRO")
+    submit = st.form_submit_button("✅ SALVAR REGISTRO")
 
-# --- LÓGICA DE CÁLCULO (Isso travou na linha 77 antes, mas agora está limpo) ---
 if submit:
-    if hora_inicio is None or hora_fim is None:
-        st.error("Por favor, preencha o horário de início e término.")
+    if h_ini is None or h_fim is None:
+        st.error("Por favor, preencha os horários.")
     else:
-        # Lógica de Tempo (Regra: (Total - 3h) * R$30)
-        inicio_dt = datetime.combine(data_inicio, hora_inicio)
-        # Lógica para virada de dia/noite
-        data_fim_ajustada = data_inicio if hora_fim > hora_inicio else data_inicio + timedelta(days=1)
-        fim_dt = datetime.combine(data_fim_ajustada, hora_fim)
+        # Lógica de Tempo (Dedução de 3h)
+        ini_dt = datetime.combine(data_ini, h_ini)
+        data_fim_ok = data_ini if h_fim > h_ini else data_ini + timedelta(days=1)
+        fim_dt = datetime.combine(data_fim_ok, h_fim)
         
-        if fim_dt <= inicio_dt:
-            st.error("Erro: A data de término deve ser posterior à de início.")
-        else:
-            # Regra KM: (Inicial + Final) - 50, multiplicado por 1.10
-            soma_km = km_inicial + km_final
-            km_calculado = max(0, soma_km - 50)
-            cost_km = km_calculado * 1.10
-            
-            # Regra Tempo: Total - 3 horas
-            segundos_totais = (fim_dt - inicio_dt).total_seconds()
-            horas_brutas = segundos_totais / 3600
-            horas_liquidas = max(0.0, horas_brutas - 3.0)
-            cost_tempo = horas_liquidas * 30.0 # R$30 fixo
+        # 1. CÁLCULO KM: (Inicial + Final) - 50 * 1.10
+        soma_km = km_ini + km_fim
+        km_base = max(0, soma_km - 50)
+        custo_km = km_base * VALOR_KM_FIXO
+        
+        # 2. CÁLCULO TEMPO: (Total - 3h) * Valor Hora
+        h_brutas = (fim_dt - ini_dt).total_seconds() / 3600
+        h_liq = max(0.0, h_brutas - 3.0)
+        custo_tempo = h_liq * VALOR_HORA
 
-            # Total Final (Acionamento de R$220 + Tempo + KM)
-            total_ganho = 220.0 + cost_tempo + cost_km
+        # 3. TOTAL FINAL
+        total = VALOR_ACIONAMENTO + custo_tempo + custo_km
 
-            # Criar o registro
-            novo_item = {
-                'Data': data_inicio.strftime('%d/%m/%Y'),
-                'Horas Totais': round(horas_brutas, 2),
-                'Horas Líquidas': round(horas_liquidas, 2),
-                'Soma KM': soma_km,
-                'KM Base Cálculo': km_calculado,
-                'Total Final (R$)': int(total_ganho)
-            }
-            
-            # Salvar no histórico
-            st.session_state.dados.append(novo_item)
-            st.success(f"Registro adicionado! Total: R$ {int(total_ganho)}")
-            st.rerun() # Atualiza a página para mostrar os gráficos
+        novo_item = {
+            'Data': data_ini.strftime('%d/%m/%Y'),
+            'Início': h_ini.strftime('%H:%M'),
+            'Término': h_fim.strftime('%H:%M'),
+            'Horas Líquidas': round(h_liq, 2),
+            'KM Base': km_base,
+            'Total Final (R$)': int(total)
+        }
+        
+        st.session_state.dados.append(novo_item)
+        salvar_dados(st.session_state.dados)
+        st.success(f"Adicionado! Total: R$ {int(total)}")
+        st.rerun()
 
-# --- EXIBIÇÃO DA TABELA ---
+# --- TABELA DE RESUMO ---
 if st.session_state.dados:
     st.divider()
-    st.subheader("📑 Histórico Completo")
-    df_tabela = pd.DataFrame(st.session_state.dados)
-    
-    # Exibe a tabela de forma limpa, sem o índice
-    st.dataframe(df_tabela, use_container_width=True, hide_index=True)
+    df_final = pd.DataFrame(st.session_state.dados)
+    st.dataframe(df_final, use_container_width=True, hide_index=True)
 
-    # Botão de Exportação para Excel
+    # Exportação
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df_tabela.to_excel(writer, index=False)
-    
-    st.download_button(
-        label="📥 Baixar Excel",
-        data=output.getvalue(),
-        file_name=f"Relatorio_{datetime.now().strftime('%d_%m')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+        df_final.to_excel(writer, index=False)
+    st.download_button("📥 Baixar Excel", output.getvalue(), "Relatorio.xlsx")
