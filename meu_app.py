@@ -74,6 +74,3 @@ if st.session_state.dados:
         file_name="Relatorio_Financeiro.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-streamlit
-pandas
-openpyxl
