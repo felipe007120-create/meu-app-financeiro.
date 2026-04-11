@@ -2,105 +2,135 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import io
+import os
 
-# Configuração da página
-st.set_page_config(page_title="Sistema Financeiro", page_icon="💰")
+# 1. Configurações Visuais de Nível Profissional
+st.set_page_config(page_title="Gestor Financeiro Pro", page_icon="📈", layout="wide")
 
-# Inicialização do histórico
+# Estilo para os cartões de métricas
+st.markdown("""
+    <style>
+    [data-testid="stMetricValue"] { font-size: 35px; color: #00FF00; }
+    [data-testid="stMetricLabel"] { font-size: 18px; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# 2. Banco de Dados Local (Arquivo CSV)
+DB_FILE = "historico_ganhos.csv"
+
+def carregar_dados():
+    if os.path.exists(DB_FILE):
+        try:
+            return pd.read_csv(DB_FILE).to_dict('records')
+        except:
+            return []
+    return []
+
+def salvar_dados(dados):
+    pd.DataFrame(dados).to_csv(DB_FILE, index=False)
+
+# Inicialização do estado do sistema
 if 'dados' not in st.session_state:
-    st.session_state.dados = []
+    st.session_state.dados = carregar_dados()
 
-st.title("💰 Registro de Ganhos")
+# --- CABEÇALHO E DASHBOARD ---
+st.title("📊 Gestor de Produtividade e Ganhos")
 
-# Barra Lateral - Valores que você pode ajustar conforme o contrato
-st.sidebar.header("⚙️ Configurações de Taxas")
-VALOR_HORA = st.sidebar.number_input("Valor por Hora (R$)", value=30.0)
-VALOR_ACIONAMENTO = st.sidebar.number_input("Valor Acionamento (R$)", value=220.0)
-VALOR_KM = st.sidebar.number_input("Valor por KM (R$)", value=1.20)
-
-# Formulário de Entrada
-with st.form("registro_form", clear_on_submit=True):
-    st.subheader("📝 Novo Lançamento")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        data_inicio = st.date_input("Data de Início")
-        hora_inicio = st.time_input("Hora de Início", value=None)
-    with col2:
-        data_fim = st.date_input("Data de Término")
-        hora_fim = st.time_input("Hora de Término", value=None)
-    
-    st.divider()
-    
-    col_km1, col_km2 = st.columns(2)
-    with col_km1:
-        km_inicial = st.number_input("🚗 KM Inicial", min_value=0, step=1)
-    with col_km2:
-        km_final = st.number_input("🏁 KM Final", min_value=0, step=1)
-        
-    submit = st.form_submit_button("✅ Calcular e Salvar Registro")
-
-if submit:
-    if hora_inicio is None or hora_fim is None:
-        st.error("⚠️ Por favor, preencha os horários de início e término.")
-    else:
-        # Combinar data e hora para lidar com viradas de dia (trabalho noturno)
-        inicio_dt = datetime.combine(data_inicio, hora_inicio)
-        fim_dt = datetime.combine(data_fim, hora_fim)
-        
-        if fim_dt <= inicio_dt:
-            st.error("❌ Erro: O término deve ser depois do início.")
-        elif km_final < km_inicial:
-            st.error("❌ Erro: O KM final não pode ser menor que o inicial.")
-        else:
-            # 1. Cálculo de KM (Número Inteiro)
-            km_total = int(km_final - km_inicial)
-            
-            # 2. Cálculo de Tempo Bruto
-            diferenca_bruta = fim_dt - inicio_dt
-            
-            # 3. Regra de Subtrair 3 horas (Dedução solicitada)
-            diferenca_com_deducao = diferenca_bruta - timedelta(hours=3)
-            
-            # Garante que as horas não fiquem negativas se trabalhar menos de 3h
-            horas_liquidas = max(0.0, diferenca_com_deducao.total_seconds() / 3600)
-
-            # 4. Cálculos Financeiros
-            custo_tempo = horas_liquidas * VALOR_HORA
-            custo_km = km_total * VALOR_KM
-            total_ganho = VALOR_ACIONAMENTO + custo_tempo + custo_km
-
-            # Adicionar ao histórico na memória do navegador
-            st.session_state.dados.append({
-                'Data': inicio_dt.strftime('%d/%m/%Y'),
-                'Início': inicio_dt.strftime('%H:%M'),
-                'Término': fim_dt.strftime('%H:%M'),
-                'Horas Totais': round(diferenca_bruta.total_seconds() / 3600, 2),
-                'Horas Líquidas (-3h)': round(horas_liquidas, 2),
-                'KM': km_total,
-                'Total Final (R$)': int(total_ganho) # Salva como número inteiro
-            })
-            
-            st.balloons()
-            st.success(f"Registro Adicionado! Total: R$ {int(total_ganho)}")
-
-# Exibição dos Resultados
 if st.session_state.dados:
-    df = pd.DataFrame(st.session_state.dados)
-    st.divider()
-    st.subheader("📊 Resumo dos Ganhos")
-    
-    # Mostra a tabela
-    st.dataframe(df, use_container_width=True)
+    df_resumo = pd.DataFrame(st.session_state.dados)
+    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+    with col_m1:
+        st.metric("Faturamento Total", f"R$ {df_resumo['Total Final (R$)'].sum():.0f}")
+    with col_m2:
+        st.metric("Média por Saída", f"R$ {df_resumo['Total Final (R$)'].mean():.0f}")
+    with col_m3:
+        st.metric("Total KM Base", f"{df_resumo['KM Base Cálculo'].sum()} km")
+    with col_m4:
+        st.metric("Total Horas Líquidas", f"{df_resumo['Horas Líquidas'].sum():.1f}h")
 
-    # Lógica para exportar para Excel
+st.divider()
+
+# --- ÁREA DE LANÇAMENTO ---
+with st.expander("➕ REGISTRAR NOVO ACIONAMENTO", expanded=not st.session_state.dados):
+    with st.form("form_pro", clear_on_submit=True):
+        col_a, col_b = st.columns(2)
+        
+        with col_a:
+            st.markdown("### 🕒 Horários")
+            data_ini = st.date_input("Data do Serviço", value=datetime.now())
+            h_ini = st.time_input("Hora de Início", value=None)
+            h_fim = st.time_input("Hora de Término", value=None)
+            
+        with col_b:
+            st.markdown("### 🛣️ Quilometragem")
+            km_ini = st.number_input("KM Inicial (Painel)", min_value=0, step=1)
+            km_fim = st.number_input("KM Término (Painel)", min_value=0, step=1)
+        
+        st.divider()
+        btn_salvar = st.form_submit_button("💾 SALVAR E CALCULAR REGISTRO")
+
+if btn_salvar:
+    if not h_ini or not h_fim:
+        st.error("⚠️ Por favor, preencha todos os horários.")
+    elif km_fim < 0: # Caso queira validar se os KMs foram preenchidos
+        st.error("⚠️ Preencha os valores de KM.")
+    else:
+        # Combinando Datas e Horas
+        ini = datetime.combine(data_ini, h_ini)
+        # Lógica para caso o serviço termine no dia seguinte (meia-noite)
+        data_fim_ajustada = data_ini if h_fim > h_ini else data_ini + timedelta(days=1)
+        fim = datetime.combine(data_fim_ajustada, h_fim)
+        
+        # --- CÁLCULO DE KM (REGRA: (INICIAL + FINAL) - 50) * 1.10 ---
+        soma_km = km_ini + km_fim
+        km_calculado = max(0, soma_km - 50)
+        valor_km_total = km_calculado * 1.10
+        
+        # --- CÁLCULO DE TEMPO (REGRA: (TOTAL - 3H) * 30) ---
+        segundos_totais = (fim - ini).total_seconds()
+        horas_brutas = segundos_totais / 3600
+        horas_liq = max(0.0, horas_brutas - 3.0)
+        valor_tempo_total = horas_liq * 30.0
+        
+        # --- TOTAL FINAL (BASE 220 + TEMPO + KM) ---
+        total_final = 220.0 + valor_tempo_total + valor_km_total
+        
+        # Criando o registro
+        novo_registro = {
+            'Data': data_ini.strftime('%d/%m/%Y'),
+            'Horas Brutas': round(horas_brutas, 2),
+            'Horas Líquidas': round(horas_liq, 2),
+            'Soma KM': soma_km,
+            'KM Base Cálculo': km_calculado,
+            'Valor KM (R$)': round(valor_km_total, 2),
+            'Total Final (R$)': int(total_final)
+        }
+        
+        st.session_state.dados.append(novo_registro)
+        salvar_dados(st.session_state.dados)
+        st.success(f"✅ Sucesso! Total de R$ {int(total_final)} adicionado ao dashboard.")
+        st.rerun()
+
+# --- TABELA DE HISTÓRICO ---
+if st.session_state.dados:
+    st.subheader("📑 Detalhamento dos Registros")
+    df_visual = pd.DataFrame(st.session_state.dados)
+    
+    # Exibe a tabela de forma limpa
+    st.dataframe(df_visual, use_container_width=True)
+
+    # Botão de Exportação para Excel Profissional
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False)
+        df_visual.to_excel(writer, index=False)
     
     st.download_button(
-        label="📥 Baixar Relatório em Excel",
+        label="📥 Baixar Relatório para Auditoria",
         data=output.getvalue(),
-        file_name=f"Relatorio_{datetime.now().strftime('%d_%m_%Y')}.xlsx",
+        file_name=f"Relatorio_Ganhos_{datetime.now().strftime('%m_%Y')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
+# Rodapé profissional
+st.markdown("---")
+st.caption(f"Sistema Gerencial v3.0 | Atualizado em {datetime.now().strftime('%d/%m/%Y')}")
