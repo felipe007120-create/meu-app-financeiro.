@@ -5,7 +5,7 @@ import io
 import os
 
 # Configurações de Página
-st.set_page_config(page_title="Gestor de Ganhos", page_icon="💰", layout="wide")
+st.set_page_config(page_title="Gestor de Ganhos", page_icon= layout="wide")
 
 # Banco de Dados
 DB_FILE = "dados_financeiros.csv"
@@ -28,7 +28,7 @@ with st.sidebar:
     if os.path.exists("logo.png"):
         st.image("logo.png", use_container_width=True)
     else:
-        st.header("📈 GESTOR DE GANHOS")
+        st.header(" GESTOR DE GANHOS")
     
     st.divider()
     st.header("⚙️ Configurações")
@@ -50,7 +50,7 @@ if st.session_state.dados:
 # --- FORMULÁRIO ---
 col_form, col_hist = st.columns([1, 2])
 with col_form:
-    st.subheader("📝 Novo Registro")
+    st.subheader("Novo Registro")
     with st.form("registro_form", clear_on_submit=True):
         data_ini = st.date_input("Data do Serviço")
         h_ini = st.time_input("Hora Início", value=None)
@@ -77,6 +77,6 @@ if submit:
         st.rerun()
 
 with col_hist:
-    st.subheader("📑 Histórico")
+    st.subheader("Histórico")
     if st.session_state.dados:
         st.dataframe(pd.DataFrame(st.session_state.dados), use_container_width=True, hide_index=True)
